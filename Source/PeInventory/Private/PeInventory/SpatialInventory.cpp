@@ -1,31 +1,18 @@
-#include "PeInventory/PeSpatialInventory.h"
-
-#include "PeInventory/Pe2DBinPacker.h"
-#include "Net/UnrealNetwork.h"
+#include "PeInventory/SpatialInventory.h"
 
 #include "GameFramework/PlayerController.h"
-#include "PeInventory//PeInventoryContainer.h"
-#include "PeInventory/PeItemDb.h"
+#include "PeInventory/2DBinPacker.h"
+#include "PeInventory/ItemDb.h"
+#include "PeInventory/ItemHandler.h"
 
-void UPeSpatialInventory::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-    DOREPLIFETIME(UPeSpatialInventory, ItemStacks);
-    DOREPLIFETIME(UPeSpatialInventory, NumSlotsX);
-    DOREPLIFETIME(UPeSpatialInventory, NumSlotsY);
-    
-}
+// void FSpatialInventory::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+// {
+//     DOREPLIFETIME(FSpatialInventory, ItemStacks);
+//     DOREPLIFETIME(FSpatialInventory, NumSlotsX);
+//     DOREPLIFETIME(FSpatialInventory, NumSlotsY);
+// }
 
-bool UPeSpatialInventory::CanPlayerAccess(const APlayerController* PlayerController) const
-{
-    if(PlayerController == GetOwner()) { return true; }
-
-    const IPeInventoryContainer* Container = Cast<IPeInventoryContainer>(GetOwner());
-    if(nullptr == Container) { return true; }
-
-     return Container->CanPlayerAccessInventory(PlayerController);
-}
-
-void UPeSpatialInventory::ForEachStack(TFunction<void(const FPeItemStack&)> Functor)
+void FSpatialInventory::ForEachStack(const TFunction<void(const FItemStack&)>& Functor)
 {
     for (const auto& ItemStack : ItemStacks.Items)
     {
@@ -33,34 +20,28 @@ void UPeSpatialInventory::ForEachStack(TFunction<void(const FPeItemStack&)> Func
     }
 }
 
-inline void UPeSpatialInventory::NotifyItemStacksAdded(const TArrayView<int32>& AddedIndices, int32 FinalSize) const
+inline void FSpatialInventory::NotifyItemStacksAdded(const TArrayView<int32>& AddedIndices, int32 FinalSize) const
 {
     ItemStacksAddedEvent.Broadcast(AddedIndices);
 }
 
-inline void UPeSpatialInventory::NotifyItemStacksRemoved(const TArrayView<int32>& RemovedIndices, int32 FinalSize) const
+inline void FSpatialInventory::NotifyItemStacksRemoved(const TArrayView<int32>& RemovedIndices, int32 FinalSize) const
 {
     ItemStacksRemovedEvent.Broadcast(RemovedIndices);
 }
 
-inline void UPeSpatialInventory::NotifyItemStacksChanged(const TArrayView<int32>& ChangedIndices, int32 FinalSize) const
+inline void FSpatialInventory::NotifyItemStacksChanged(const TArrayView<int32>& ChangedIndices, int32 FinalSize) const
 {
     ItemStacksChangedEvent.Broadcast(ChangedIndices);
 }
 
-void UPeSpatialInventory::BeginPlay()
-{
-    Super::BeginPlay();
-    ItemStacks.OwningInventory = this;
-}
-
-bool UPeSpatialInventory::IsValidSlot(uint32 X, uint32 Y) const
+bool FSpatialInventory::IsValidSlot(uint32 X, uint32 Y) const
 {
     const uint32 IdxSlot = Y * GetWidth() + X;
-    return IdxSlot >= 0 && IdxSlot < GetWidth() * GetHeight();
+    return IdxSlot < GetWidth() * GetHeight();
 }
 
-bool UPeSpatialInventory::HasStackAtSlot(int32 X, int32 Y) const
+bool FSpatialInventory::HasStackAtSlot(int32 X, int32 Y) const
 {
     const int32 IdxSlot  = Y * GetWidth() + X;
     const int32 IdxStack = Slots[IdxSlot].IdxStack;
@@ -68,29 +49,32 @@ bool UPeSpatialInventory::HasStackAtSlot(int32 X, int32 Y) const
     return IdxStack >= 0;
 }
 
-bool UPeSpatialInventory::BinPack(const TArray<FPeItemStack>& Stacks)
+bool FSpatialInventory::BinPack(const TArray<FItemStack>& Stacks)
 {
     struct FPack
     {
-        FPeItemStack Stack;
+        FItemStack Stack;
         uint32 X, Y;
 
-        FPack() {}
-        FPack(const FPeItemStack& InStack, uint32 InX, uint32 InY) : Stack(InStack), X(InX), Y(InY) {}
+        FPack(): X(0), Y(0)
+        {
+        }
+
+        FPack(const FItemStack& InStack, uint32 InX, uint32 InY) : Stack(InStack), X(InX), Y(InY) {}
     };
     
-    TArray<FPe2DBinPackNode> Nodes;
+    TArray<F2DBinPackNode> Nodes;
     Nodes.Reserve(Stacks.Num() / 2);
 
     TArray<FPack> Packed;
     Packed.Reserve(Stacks.Num());
 
-    Nodes.Add(FPe2DBinPackNode(FIntRect(0, 0, GetWidth(), GetHeight())));
+    Nodes.Add(F2DBinPackNode(FIntRect(0, 0, GetWidth(), GetHeight())));
     
     for(const auto& Stack : Stacks)
     {
         FIntRect OutRect;
-        if(FPe2DBinPackNode::Insert(Nodes, 0, FIntRect(0, 0, Stack.SlotWidth, Stack.SlotHeight), OutRect))
+        if(F2DBinPackNode::Insert(Nodes, 0, FIntRect(0, 0, Stack.SlotWidth, Stack.SlotHeight), OutRect))
         {
             Packed.Emplace(Stack, OutRect.Min.X, OutRect.Min.Y);
         }
@@ -109,7 +93,7 @@ bool UPeSpatialInventory::BinPack(const TArray<FPeItemStack>& Stacks)
     return bSuccess;
 }
 
-FPeItemStack* UPeSpatialInventory::GetStackAtSlot(uint32 X, uint32 Y)
+FItemStack* FSpatialInventory::GetStackAtSlot(uint32 X, uint32 Y)
 {
     const uint32 IdxSlot = Y * GetWidth() + X;
     if(IdxSlot >= GetWidth() * GetHeight()) { return nullptr; }
@@ -120,7 +104,7 @@ FPeItemStack* UPeSpatialInventory::GetStackAtSlot(uint32 X, uint32 Y)
     return &ItemStacks.Items[IdxStack];
 }
 
-bool UPeSpatialInventory::GetStackIdxAtSlot(uint32 X, uint32 Y, int32& OutIdxStack) const
+bool FSpatialInventory::GetStackIdxAtSlot(uint32 X, uint32 Y, int32& OutIdxStack) const
 {
     const uint32 IdxSlot = Y * GetWidth() + X;
     if(IdxSlot >= GetWidth() * GetHeight())
@@ -132,32 +116,26 @@ bool UPeSpatialInventory::GetStackIdxAtSlot(uint32 X, uint32 Y, int32& OutIdxSta
     return OutIdxStack >= 0;
 }
 
-bool UPeSpatialInventory::GetStackByItemId(int32 ItemId, const FPeItemStack*& OutStack) const
+bool FSpatialInventory::GetStackByItemId(int32 ItemId, const FItemStack*& OutStack) const
 {
-    const FPeItemStack* FoundStack = ItemStacks.Items.FindByPredicate([ItemId](const FPeItemStack& Stack)
+    OutStack = ItemStacks.Items.FindByPredicate([ItemId](const FItemStack& Stack)
     {
         return Stack.ItemId == ItemId;
     });
-    
-    if(nullptr != FoundStack)
-    {
-        OutStack = FoundStack;
-        return true;
-    }
-    
-    return false;
+
+    return OutStack != nullptr;
 }
 
-void UPeSpatialInventory::EmptySlot(uint32 X, uint32 Y)
+void FSpatialInventory::EmptySlot(uint32 X, uint32 Y)
 {
-    FPeItemStack* StackAtSlot = GetStackAtSlot(X, Y);
+    const FItemStack* StackAtSlot = GetStackAtSlot(X, Y);
     if(nullptr != StackAtSlot)
     {
         PointSlotsToStack(*StackAtSlot, X, Y, true);
     }
 }
 
-void UPeSpatialInventory::EmptySlots(uint32 StartX, uint32 EndX, uint32 StartY, uint32 EndY)
+void FSpatialInventory::EmptySlots(uint32 StartX, uint32 EndX, uint32 StartY, uint32 EndY)
 {
     for(uint32 IdxY = StartY; IdxY < EndY; ++IdxY)
     for(uint32 IdxX = StartX; IdxX < EndX; ++IdxX)
@@ -166,7 +144,7 @@ void UPeSpatialInventory::EmptySlots(uint32 StartX, uint32 EndX, uint32 StartY, 
     }
 }
 
-void UPeSpatialInventory::SetCapacity(uint32 SizeX, uint32 SizeY)
+void FSpatialInventory::SetCapacity(uint32 SizeX, uint32 SizeY)
 {
     NumSlotsX = SizeX;
     NumSlotsY = SizeY;
@@ -180,21 +158,21 @@ void UPeSpatialInventory::SetCapacity(uint32 SizeX, uint32 SizeY)
     }
 }
 
-void UPeSpatialInventory::PostReplicatedSetup()
+void FSpatialInventory::PostReplicatedSetup()
 {
     SetCapacity(GetWidth(), GetHeight());
 
     for(auto& Stack : ItemStacks.Items)
     {
-        FPeItemDb::Get().SetupItemStack(Stack);
+        // FItemDb::Get().SetupItemStack(Stack);
         PointSlotsToStack(Stack, Stack.SlotX, Stack.SlotY);
     }
 }
 
-FPeItemStackMoveResult UPeSpatialInventory::GetStackMoveResult(const FPeItemStack& InputStack, uint32 SlotX, uint32 SlotY) const
+FItemStackMoveResult FSpatialInventory::GetStackMoveResult(const FItemStack& InputStack, uint32 SlotX, uint32 SlotY) const
 {
     // If a stack exists at our destination slot, see if we can early-out.
-    FPeItemStack* ItemStackAtDestSlot = const_cast<UPeSpatialInventory*>(this)->GetStackAtSlot(SlotX, SlotY);
+    FItemStack* ItemStackAtDestSlot = const_cast<FSpatialInventory*>(this)->GetStackAtSlot(SlotX, SlotY);
     if(nullptr != ItemStackAtDestSlot)
     {
         const int32 NumItemsInInputStack = InputStack.Amount;
@@ -202,12 +180,12 @@ FPeItemStackMoveResult UPeSpatialInventory::GetStackMoveResult(const FPeItemStac
         if(ItemStackAtDestSlot->ItemId == InputStack.ItemId && ItemStackAtDestSlot->ItemType == InputStack.ItemType)
         {
             const int32 Clearance = ItemStackAtDestSlot->MaxAmount - ItemStackAtDestSlot->Amount;
-            return StackMoveResult(FMath::Min(NumItemsInInputStack, Clearance), SlotX, SlotY,
-                const_cast<UPeSpatialInventory*>(this)->GetStackAtSlot(InputStack.SlotX, InputStack.SlotY), ItemStackAtDestSlot);
+            return FItemStackMoveResult(FMath::Min(NumItemsInInputStack, Clearance), SlotX, SlotY,
+                const_cast<FSpatialInventory*>(this)->GetStackAtSlot(InputStack.SlotX, InputStack.SlotY), ItemStackAtDestSlot);
         }
         
         // Different Id, therefore it's impossible to fit this item stack in.
-        return StackMoveResult(0, 0, 0);
+        return FItemStackMoveResult(0, 0, 0);
     }
 
     // If we're here, there's no stack at the destination slot, but there might be stacks that span the bounds
@@ -226,7 +204,7 @@ FPeItemStackMoveResult UPeSpatialInventory::GetStackMoveResult(const FPeItemStac
     const uint32 EndY = SlotY + Height;
     if(EndY > GetHeight() || EndX > GetWidth())
     {
-        return FPeItemStackMoveResult(0, 0, 0);
+        return FItemStackMoveResult(0, 0, 0);
     }
 
     // Starting at the root slot, iterate to find if the ItemStack fits in the space or if it can be consolidated into another stack.
@@ -234,7 +212,7 @@ FPeItemStackMoveResult UPeSpatialInventory::GetStackMoveResult(const FPeItemStac
     for(uint32 IdxX = SlotX; IdxX < EndX; ++IdxX)
     {
         // We can always fit into an empty slot.
-        const FPeItemStack* StackAtSlot = const_cast<UPeSpatialInventory*>(this)->GetStackAtSlot(IdxX, IdxY);
+        const FItemStack* StackAtSlot = const_cast<FSpatialInventory*>(this)->GetStackAtSlot(IdxX, IdxY);
         if(nullptr == StackAtSlot) { continue; }
 
         // If we've overlapped the same stack (meaning we've nudged this stack only a little), we can just early-out.
@@ -244,52 +222,51 @@ FPeItemStackMoveResult UPeSpatialInventory::GetStackMoveResult(const FPeItemStac
         // If any slots in the search don't match our input Stack's item id, there's no possibility to consolidate stacks.
         if(StackAtSlot->ItemId != InputStack.ItemId || StackAtSlot->ItemType != InputStack.ItemType)
         {
-            return StackMoveResult(0, 0, 0);
+            return FItemStackMoveResult(0, 0, 0);
         }
 
         // At this point, we're not an empty slot and we have the same item id.
         const int32 MaxSlotted = FMath::Min(InputStack.Amount, StackAtSlot->MaxAmount - StackAtSlot->Amount);
-        return StackMoveResult(MaxSlotted, IdxX, IdxY);
+        return FItemStackMoveResult(MaxSlotted, IdxX, IdxY);
     }
 
     // If we've reached here, we've not early-outed prior, which means all slots were empty. This means we can directly fit the entirety of the item stack
     // into the area spanned by its width and height.
-    return StackMoveResult(InputStack.Amount, SlotX, SlotY);
+    return FItemStackMoveResult(InputStack.Amount, SlotX, SlotY);
 }
 
-UPeSpatialInventory::StackMoveResult UPeSpatialInventory::GetStackMoveResult(
-    const UPeSpatialInventory* SrcInventory, const UPeSpatialInventory* DstInventory, uint32 SrcX, uint32 SrcY,
+FItemStackMoveResult FSpatialInventory::GetStackMoveResult(
+    const TSharedPtr<FSpatialInventory>& SrcInventory, const TSharedPtr<FSpatialInventory>& DstInventory, uint32 SrcX, uint32 SrcY,
     uint32 DstX, uint32 DstY)
 {
-    if (nullptr == SrcInventory || nullptr == DstInventory || !SrcInventory->IsValidLowLevel() || !DstInventory->IsValidLowLevel())
+    if (nullptr == SrcInventory || nullptr == DstInventory)
     {
-        return StackMoveResult();
+        return FItemStackMoveResult();
     }
 
-    FPeItemStack* SrcStack = const_cast<UPeSpatialInventory*>(SrcInventory)->GetStackAtSlot(SrcX, SrcY);
+    const FItemStack* SrcStack = SrcInventory->GetStackAtSlot(SrcX, SrcY);
     if (nullptr == SrcStack)
     {
-        return StackMoveResult();
+        return FItemStackMoveResult();
     }
     
     return DstInventory->GetStackMoveResult(*SrcStack, DstX, DstY);
 }
 
-FPeItemStackMoveResult UPeSpatialInventory::AddItemStack(const FPeItemStack& InputStack, uint32 SlotX, uint32 SlotY)
+FItemStackMoveResult FSpatialInventory::AddItemStack(const FItemStack& InputStack, uint32 SlotX, uint32 SlotY)
 {
-    const StackMoveResult Res = GetStackMoveResult(InputStack, SlotX, SlotY);
+    const FItemStackMoveResult Res = GetStackMoveResult(InputStack, SlotX, SlotY);
     if(Res.NumFit < 1) { return Res; }
     
     const int32 IdxToSlot = Res.Y * GetWidth() + Res.X;
-    FPeInventorySlot& DestSlot = Slots[IdxToSlot];
+    const FInventorySlot& DestSlot = Slots[IdxToSlot];
 
     // Empty slot, create stack.
     if(DestSlot.IdxStack < 0)
     {
         const int32 NewStackIdx = ItemStacks.Items.Num();
-
-        DestSlot.IdxStack       = NewStackIdx; // Slot gets associated with the newly created stack.
-        FPeItemStack& NewStack  = ItemStacks.Items.Add_GetRef(InputStack);
+        
+        FItemStack& NewStack  = ItemStacks.Items.Add_GetRef(InputStack);
         NewStack.SlotX          = Res.X;
         NewStack.SlotY          = Res.Y;
         NewStack.IdxStackArray  = NewStackIdx;
@@ -297,7 +274,6 @@ FPeItemStackMoveResult UPeSpatialInventory::AddItemStack(const FPeItemStack& Inp
 
         PointSlotsToStack(NewStack, Res.X, Res.Y);
         
-        // Call AddItemStack event
         ItemStackAddedEvent.Broadcast(NewStackIdx);
 
         GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, NewStack.ToString());
@@ -306,20 +282,18 @@ FPeItemStackMoveResult UPeSpatialInventory::AddItemStack(const FPeItemStack& Inp
     }
     
     // Existing stack at slot.
-    FPeItemStack& ExistingStack  = ItemStacks.Items[DestSlot.IdxStack];
+    FItemStack& ExistingStack  = ItemStacks.Items[DestSlot.IdxStack];
     ExistingStack.Amount        += Res.NumFit;
     ItemStacks.MarkItemDirty(ExistingStack);
     ItemStackChangedEvent.Broadcast(ExistingStack.IdxStackArray);
-
-    // Make all slots spanned by the item stack point to the item stack.
     
-    PointSlotsToStack(ExistingStack, Res.X, Res.Y);
+    // PointSlotsToStack(ExistingStack, Res.X, Res.Y);
     return Res;
 }
 
-void UPeSpatialInventory::AdjustItemCountOfStackAtSlot(uint32 Amount, uint32 SlotX, uint32 SlotY)
+void FSpatialInventory::AdjustItemCountOfStackAtSlot(uint32 Amount, uint32 SlotX, uint32 SlotY)
 {
-    FPeItemStack* Stack = GetStackAtSlot(SlotX, SlotY);
+    FItemStack* Stack = GetStackAtSlot(SlotX, SlotY);
     if(nullptr != Stack)
     {
         Stack->Amount = Amount;
@@ -336,38 +310,49 @@ void UPeSpatialInventory::AdjustItemCountOfStackAtSlot(uint32 Amount, uint32 Slo
     }
 }
 
-void UPeSpatialInventory::RemoveStackAt(const uint32 IdxStack)
+void FSpatialInventory::RemoveStackAt(const uint32 IdxStack)
 {
     const uint32 NumStacks = ItemStacks.Items.Num();
     if(IdxStack >= NumStacks || NumStacks == 0) { return; }
 
     const uint32 IdxLastStack = NumStacks - 1;
-    if(IdxLastStack == 0 || IdxLastStack == IdxStack) 
+    
+    if(IdxStack != IdxLastStack)
     {
-        // Don't swap, just remove.
-        ItemStacks.Items.RemoveAt(IdxLastStack);
-        ItemStacks.MarkArrayDirty();
-    }   
-    else
-    {
-        // Swap with last stack.
+        // Swap with last stack only if we're not removing the last stack
         ItemStacks.Items.SwapMemory(IdxStack, IdxLastStack);
 
-        // Make sure stack swapped from the end updates its IdxStackArray.
-        FPeItemStack& SwappedStack = ItemStacks.Items[IdxStack];
+        // Make sure stack swapped from the end updates its IdxStackArray
+        FItemStack& SwappedStack = ItemStacks.Items[IdxStack];
         SwappedStack.IdxStackArray = IdxStack;
         ItemStacks.MarkItemDirty(SwappedStack);
-
-        // Remove last item stack.
-        ItemStacks.Items.RemoveAt(IdxLastStack);
-        ItemStacks.MarkArrayDirty();
     }
+
+    // Remove last item stack
+    ItemStacks.Items.RemoveAt(IdxLastStack);
+    ItemStacks.MarkArrayDirty();
 
     ItemStackRemovedEvent.Broadcast(IdxStack);
 }
 
+bool FSpatialInventory::CanStackBeUsedOnAnotherStack(uint32 SrcX, uint32 SrcY, uint32 DstX, uint32 DstY)
+{
+    const FItemStack* SrcStack = GetStackAtSlot(SrcX, SrcY);
+    if (nullptr == SrcStack) { return false; }
 
-void UPeSpatialInventory::PointSlotsToStack(const FPeItemStack& Stack, int32 StartX, int32 StartY, bool bEmpty)
+    const FItemStack* DstStack = GetStackAtSlot(DstX, DstY);
+    if (nullptr == DstStack) { return false; }
+
+    const FName& ItemName = DstStack->ItemName;
+    const TSharedPtr<FItemHandler> Handler = FItemHandlerRegistry::GetItemHandler(ItemName);
+    if(nullptr == Handler) { return false; }
+
+    const bool bCanBeUsedOn = Handler->CanStackBeUsedOnMe(*SrcStack, 0);
+    return bCanBeUsedOn;
+}
+
+
+void FSpatialInventory::PointSlotsToStack(const FItemStack& Stack, int32 StartX, int32 StartY, bool bEmpty)
 {
     const int32 EndX = StartX + Stack.SlotWidth;
     const int32 EndY = StartY + Stack.SlotHeight;
@@ -375,64 +360,53 @@ void UPeSpatialInventory::PointSlotsToStack(const FPeItemStack& Stack, int32 Sta
     PointSlotsToStackIdx(!bEmpty ? Stack.IdxStackArray : -1, StartX, EndX, StartY, EndY);
 }
 
-void UPeSpatialInventory::PointSlotsToStackIdx(const int32 IdxStack, int32 StartSlotX, int32 EndSlotX, int32 StartSlotY,
+void FSpatialInventory::PointSlotsToStackIdx(const int32 IdxStack, int32 StartSlotX, int32 EndSlotX, int32 StartSlotY,
     int32 EndSlotY)
 {
     for(int32 IdxY = StartSlotY; IdxY < EndSlotY; ++IdxY)
     for(int32 IdxX = StartSlotX; IdxX < EndSlotX; ++IdxX)
     {
         const int32 IdxSlot = IdxY * GetWidth() + IdxX;
-        FPeInventorySlot& Slot = Slots[IdxSlot];
+        FInventorySlot& Slot = Slots[IdxSlot];
         Slot.IdxStack = IdxStack;
     }
 }
 
-FPeItemStackMoveResult UPeSpatialInventory::MoveStack(UPeSpatialInventory* SrcInventory, uint32 SrcX, uint32 SrcY, uint32 DestX, uint32 DestY)
+FItemStackMoveResult FSpatialInventory::TransferItemStackToAnotherInventory(TSharedPtr<FSpatialInventory>& DstInventory, uint32 SrcX, uint32 SrcY, uint32 DestX, uint32 DestY)
 {
-    if(nullptr == SrcInventory || !SrcInventory->IsValidLowLevel()) { return FPeItemStackMoveResult(); }
+    if(nullptr == DstInventory) { return FItemStackMoveResult(); }
     
-    if(SrcInventory == this) { return MoveStack(SrcX, SrcY, DestX, DestY); }
+    if(DstInventory.Get() == this) { return MoveStack(SrcX, SrcY, DestX, DestY); }
 
-    FPeItemStack* SrcStack = SrcInventory->GetStackAtSlot(SrcX, SrcY);
-    if(nullptr == SrcStack)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, TEXT("Src stack was null."));
-        return FPeItemStackMoveResult();
-    }
+    const FItemStack* SrcStack = GetStackAtSlot(SrcX, SrcY);
+    if(nullptr == SrcStack) { return FItemStackMoveResult(); }
 
-    const FPeItemStackMoveResult AddResult = AddItemStack(*SrcStack, DestX, DestY);
+    const FItemStackMoveResult AddResult = DstInventory->AddItemStack(*SrcStack, DestX, DestY);
     if(AddResult.NumFit > 0)
     {
-        uint32 NewAmount = SrcStack->Amount - AddResult.NumFit;
-
-        // Underflow happened, somehow.
-        if(UNLIKELY(NewAmount >= SrcStack->Amount))
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red, TEXT("Underflow happened...somehow"));
-            NewAmount = 0;    
-        }
-        SrcInventory->AdjustItemCountOfStackAtSlot(NewAmount, SrcX, SrcY);
+        const uint32 NewAmount = SrcStack->Amount - FMath::Min(SrcStack->Amount, AddResult.NumFit);
+        AdjustItemCountOfStackAtSlot(NewAmount, SrcX, SrcY);
     }
 
     return AddResult;
 }
 
-FPeItemStackMoveResult UPeSpatialInventory::MoveStack(uint32 SrcX, uint32 SrcY, uint32 DestX, uint32 DestY)
+FItemStackMoveResult FSpatialInventory::MoveStack(uint32 SrcX, uint32 SrcY, uint32 DestX, uint32 DestY)
 {
-    FPeItemStack* SourceStack = GetStackAtSlot(SrcX, SrcY);
+    FItemStack* SourceStack = GetStackAtSlot(SrcX, SrcY);
     if(nullptr == SourceStack)
     {
-        return StackMoveResult(0,0,0);
+        return FItemStackMoveResult(0,0,0);
     }
     
-    const StackMoveResult MoveResult = GetStackMoveResult(*SourceStack, DestX, DestY);
+    const FItemStackMoveResult MoveResult = GetStackMoveResult(*SourceStack, DestX, DestY);
     if(MoveResult.NumFit < 1) { return MoveResult; }
 
     // We know that we're going to update this stack below, either in the branch or beneath that, so flag this now.
     ItemStacks.MarkItemDirty(*SourceStack);
     
     // If there's a stack at the destination, we move as much of the source stack as we can to the destination.
-    FPeItemStack* DestStack = MoveResult.DstStack;
+    const FItemStack* DestStack = MoveResult.DstStack;
     if(nullptr != DestStack)
     {
         AdjustItemCountOfStackAtSlot(SourceStack->Amount - MoveResult.NumFit, SrcX, SrcY);
@@ -452,7 +426,7 @@ FPeItemStackMoveResult UPeSpatialInventory::MoveStack(uint32 SrcX, uint32 SrcY, 
     return MoveResult;
 }
 
-void UPeSpatialInventory::GetSlotsOverlappedByStackAtSlot(const FPeItemStack& Stack, uint32 IdxStartX, uint32 IdxStartY, TArray<uint32, TInlineAllocator<16>>& SlotIds) const
+void FSpatialInventory::GetSlotsOverlappedByStackAtSlot(const FItemStack& Stack, uint32 IdxStartX, uint32 IdxStartY, TArray<uint32, TInlineAllocator<16>>& SlotIds) const
 {
     int32 Width  = Stack.SlotWidth;
     int32 Height = Stack.SlotHeight;
@@ -470,7 +444,7 @@ void UPeSpatialInventory::GetSlotsOverlappedByStackAtSlot(const FPeItemStack& St
     }
 }
 
-void UPeSpatialInventory::EmptyAllSlots()
+void FSpatialInventory::EmptyAllSlots()
 {
     const int32 Width  = GetWidth();
     const int32 Height = GetHeight();
@@ -479,7 +453,7 @@ void UPeSpatialInventory::EmptyAllSlots()
     for(int32 IdxX = 0; IdxX < Width; ++IdxX)
     {
         const int32 IdxSlot = IdxY * Width + IdxX;
-        FPeInventorySlot& Slot = Slots[IdxSlot];
+        FInventorySlot& Slot = Slots[IdxSlot];
         Slot.IdxStack = -1;
     }
 

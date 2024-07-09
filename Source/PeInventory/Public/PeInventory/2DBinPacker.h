@@ -1,6 +1,6 @@
 #pragma once
 
-struct PEINVENTORY_API FPe2DBinPackNode
+struct PEINVENTORY_API F2DBinPackNode
 {
 	int32 LeftChild;
 	int32 RightChild;
@@ -8,8 +8,8 @@ struct PEINVENTORY_API FPe2DBinPackNode
 	FIntRect Rect;
 	bool     bFilled;
 
-	FPe2DBinPackNode() : LeftChild(-1), RightChild(-1), Rect(), bFilled(false) {}
-	FPe2DBinPackNode(FIntRect InRect) : LeftChild(-1), RightChild(-1),  Rect(InRect), bFilled(false) {}
+	F2DBinPackNode() : LeftChild(-1), RightChild(-1), Rect(), bFilled(false) {}
+	F2DBinPackNode(FIntRect InRect) : LeftChild(-1), RightChild(-1),  Rect(InRect), bFilled(false) {}
 
 	bool HasChildren() const
 	{
@@ -26,9 +26,9 @@ struct PEINVENTORY_API FPe2DBinPackNode
 		return TestRect.Width() == Rect.Width() && TestRect.Height() == Rect.Height();
 	}
 	
-	static bool Insert(TArray<FPe2DBinPackNode>& Nodes, int32 IdxNode, const FIntRect& InputRect, FIntRect& OutRect, int32 Depth = 0)
+	static bool Insert(TArray<F2DBinPackNode>& Nodes, int32 IdxNode, const FIntRect& InputRect, FIntRect& OutRect, int32 Depth = 0)
 	{
-		FPe2DBinPackNode& Node = Nodes[IdxNode];
+		F2DBinPackNode& Node = Nodes[IdxNode];
 		
 		if(Node.HasChildren())
 		{
@@ -74,8 +74,8 @@ struct PEINVENTORY_API FPe2DBinPackNode
 		Node.LeftChild  = LeftChildId;
 		Node.RightChild = LeftChildId + 1;
 		
-		Nodes.Add(FPe2DBinPackNode(LeftRect));
-		Nodes.Add(FPe2DBinPackNode(RightRect));
+		Nodes.Add(F2DBinPackNode(LeftRect));
+		Nodes.Add(F2DBinPackNode(RightRect));
 
 		return Insert(Nodes, LeftChildId, InputRect, OutRect, ++Depth);
 	}

@@ -1,16 +1,14 @@
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Engine/DataTable.h"
 
-#include "PeItemInfoBase.generated.h"
+#include "ItemInfoBase.generated.h"
 
 USTRUCT()
-struct PEINVENTORY_API FPeItemInfoBase : public FTableRowBase
+struct PEINVENTORY_API FItemInfoBase : public FTableRowBase
 {
 	GENERATED_BODY()
-
-public:
+	
 	UPROPERTY(EditAnywhere)
 	FText DisplayName;
 
@@ -31,7 +29,4 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	TSoftObjectPtr<UTexture> Icon;
-
-	UPROPERTY(EditAnywhere)
-	TSoftClassPtr<class UPeItemHandler> Handler;
 };

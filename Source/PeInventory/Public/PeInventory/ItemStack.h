@@ -1,37 +1,25 @@
 #pragma once
 
-#include "CoreMinimal.h"
-#include "UObject/Class.h"
-#include "PeItemHandler.h"
-#include "PeNBT.h"
 #include "Engine/NetSerialization.h"
+#include "Net/Serialization/FastArraySerializer.h"
 
-#include "PeItemStack.generated.h"
-
-class UPeSpatialInventory;
-class UPeItemHandler;
+#include "ItemStack.generated.h"
 
 USTRUCT()
-struct PEINVENTORY_API FPeItemStack : public FFastArraySerializerItem
+struct PEINVENTORY_API FItemStack : public FFastArraySerializerItem
 {
     GENERATED_BODY()
 	
-    FPeItemStack() : ItemId(GetEmptyStackId()), ItemType(0), Amount(0), bRotated(false), SlotX(0), SlotY(0), IdxStackArray(0), MaxAmount(0), SlotWidth(0), SlotHeight(0) {}
+    FItemStack() : ItemId(GetEmptyStackId()), ItemType(0), Amount(0), bRotated(false), SlotX(0), SlotY(0), IdxStackArray(0), MaxAmount(0), SlotWidth(0), SlotHeight(0) {}
 
-	FPeItemStack(uint32 InId, uint8 InItemType, uint32 InAmount, bool bInRotated, UPeItemHandler* InHandler = nullptr) : ItemId(InId),
-		ItemType(InItemType), Amount(InAmount), bRotated(bInRotated), SlotX(0), SlotY(0), IdxStackArray(0), MaxAmount(0), SlotWidth(0),
-		SlotHeight(0), ItemHandler(InHandler) {}
+	FItemStack(uint32 InId, uint8 InItemType, uint32 InAmount, bool bInRotated);
 
-	FPeItemStack(uint32 InId, uint8 InItemType, uint32 InAmount, bool bInRotated, uint32 InSlotX, uint32 InSlotY, uint32 InIdxStackArray, UPeItemHandler* InHandler = nullptr) : ItemId(InId),
-		ItemType(InItemType), Amount(InAmount), bRotated(bInRotated), SlotX(InSlotX), SlotY(InSlotY), IdxStackArray(InIdxStackArray), MaxAmount(0), SlotWidth(0),
-		SlotHeight(0), ItemHandler(InHandler) {}
-	
-	FPeItemStack(uint32 InId, uint8 InItemType, uint32 InAmount, uint32 InMaxAmount, uint8 InSlotWidth, uint8 InSlotHeight, bool bInRotated,
-		uint32 InSlotX, uint32 InSlotY, uint32 InIdxStackArray, UPeItemHandler* InHandler = nullptr) : ItemId(InId), ItemType(InItemType),
-		Amount(InAmount), bRotated(bInRotated), SlotX(InSlotX), SlotY(InSlotY), IdxStackArray(InIdxStackArray), MaxAmount(InMaxAmount), SlotWidth(InSlotWidth), SlotHeight(InSlotHeight),
-		ItemHandler(InHandler) {}
+	FItemStack(uint32 InId, uint8 InItemType, uint32 InAmount, bool bInRotated, uint32 InSlotX, uint32 InSlotY, uint32 InIdxStackArray);
 
-	FPeItemStack(const FPeItemStack& Other)
+	FItemStack(uint32 InId, uint8 InItemType, uint32 InAmount, uint32 InMaxAmount, uint8 InSlotWidth, uint8 InSlotHeight, bool bInRotated,
+               uint32 InSlotX, uint32 InSlotY, uint32 InIdxStackArray);
+
+	FItemStack(const FItemStack& Other)
     {
     	ItemId		  = Other.ItemId;
     	ItemType      = Other.ItemType;
@@ -43,7 +31,15 @@ struct PEINVENTORY_API FPeItemStack : public FFastArraySerializerItem
     	SlotX         = Other.SlotX;
     	SlotY         = Other.SlotY;
     	IdxStackArray = Other.IdxStackArray;
-    	ItemHandler   = Other.ItemHandler;
+    	ItemName      = Other.ItemName;
+    }
+
+	~FItemStack()
+    {
+    	if(EmbeddedInventory.IsValid())
+    	{
+    		EmbeddedInventory.Reset();
+    	}
     }
 
     /*
@@ -104,22 +100,23 @@ struct PEINVENTORY_API FPeItemStack : public FFastArraySerializerItem
 	uint8 SlotHeight;
 
 	/*
-	 * Handles the functionality of this item. It is a singleton, so it does not store unique state on that item.
-	 * For storing unique item state, use the Meta array below.
+	 * Lookup name.
+	 * Used to grab the item handler. Not replicated.
 	 */
-	TWeakObjectPtr<class UPeItemHandler> ItemHandler;
-	
-	/*
-	 * Named binary tags for arbitrary data on the item stack.
-	 * Credit goes to Markus Persson (Notch) for the idea.
-	 */
-	TMap<uint32, FPeNBT> Meta;
+	FName ItemName;
 
 	FORCEINLINE static int32 GetEmptyStackId() { return UINT32_MAX; }
 
 	FString ToString() const;
 
 	bool NetSerialize(FArchive& Archive, class UPackageMap* PackageMap, bool& bOutSuccess);
+	
+private:
+	/*
+	 * Some item stacks hold a reference to an embedded inventory for storage within the item stack.
+	 * An example might be a bag that holds other items within it or an ammo magazine that holds bullets.
+	 */
+	TSharedPtr<struct FSpatialInventory> EmbeddedInventory;
 };
 
 /*
@@ -130,19 +127,18 @@ struct PEINVENTORY_API FPeItemStack : public FFastArraySerializerItem
  * -- e.g: DOREPLIFETIME(SomeClass, ItemStackArrayName)
  */
 USTRUCT()
-struct PEINVENTORY_API FPeItemStackArray : public FFastArraySerializer
+struct PEINVENTORY_API FItemStackArray : public FFastArraySerializer
 {
 	GENERATED_USTRUCT_BODY()
 
 	UPROPERTY()
-	TArray<FPeItemStack> Items;
-
-	UPROPERTY()
-	UPeSpatialInventory* OwningInventory;
+	TArray<FItemStack> Items;
+	
+	TSharedPtr<FSpatialInventory> OwningInventory;
 
 	bool NetDeltaSerialize(FNetDeltaSerializeInfo& DeltaParams)
 	{
-		return FastArrayDeltaSerialize<FPeItemStack, FPeItemStackArray>(Items, DeltaParams, *this);
+		return FastArrayDeltaSerialize<FItemStack, FItemStackArray>(Items, DeltaParams, *this);
 	}
 
 	void PostReplicatedAdd(const TArrayView<int32>& AddedIndices, int32 FinalSize) const;
@@ -154,7 +150,7 @@ struct PEINVENTORY_API FPeItemStackArray : public FFastArraySerializer
 
 // Metaprogramming: The compiler will generate code specializations ad-hoc as it finds them in the codebase. Faster than runtime evaluation.
 template<>
-struct TStructOpsTypeTraits<FPeItemStackArray> : public TStructOpsTypeTraitsBase2<FPeItemStackArray>
+struct TStructOpsTypeTraits<FItemStackArray> : public TStructOpsTypeTraitsBase2<FItemStackArray>
 {
 	enum
 	{
@@ -163,7 +159,7 @@ struct TStructOpsTypeTraits<FPeItemStackArray> : public TStructOpsTypeTraitsBase
 };
 
 template<>
-struct TStructOpsTypeTraits<FPeItemStack> : public TStructOpsTypeTraitsBase2<FPeItemStack>
+struct TStructOpsTypeTraits<FItemStack> : public TStructOpsTypeTraitsBase2<FItemStack>
 {
 	enum
 	{

@@ -18,7 +18,6 @@ public class PeInventory : ModuleRules
 			"InputCore", 
 			"HeadMountedDisplay", 
 			"GameplayTags", 
-			"EggGeneral",
 		});
 		
 		//PrivateDependencyModuleNames.AddRange(new string[] {"ReplicationGraph"});
@@ -26,7 +25,6 @@ public class PeInventory : ModuleRules
 		{
 		    "NetCore",
 			"Engine",
-			"EggGeneral",
 		});
 
 		PublicIncludePaths.AddRange(new string[]
